@@ -1,0 +1,11 @@
+file_name:April_28_data.csv
+piezo_column:Piezo
+encoder_column:Z
+chunk_size:1000000
+rolling_size:200
+sampling_rate:50
+change_sensitive:2.5
+threshold_piezo:1.85
+threshold_outlier:20000
+encoder_variance:2
+max_min_encoder:3
