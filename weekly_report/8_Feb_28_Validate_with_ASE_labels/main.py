@@ -19,14 +19,15 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def read_program(data_folder, validate_folders, program_no, drop_cols):
+def read_program(data_folder, validate_folders, program_no, drop_cols, test=False, start=False, end=False):
     program = os.listdir(os.path.join(data_folder, validate_folders[program_no], 'One_Die'))
-    program = [csv_file for csv_file in program if csv_file.endswith('.csv')]
+    all_program = [csv_file for csv_file in program if csv_file.endswith('.csv')]
 
     df = []
-    for csv_file in program:
+    if test is not False: all_program = [all_program[test]]
+    for csv_file in all_program:
         csv_path = os.path.join(data_folder, validate_folders[program_no], 'One_Die', csv_file)
-        df.append(pd.read_csv(csv_path, header=None, index_col=None).iloc[1:].reset_index(drop=True).drop(drop_cols, axis=1))
+        df.append(pd.read_csv(csv_path, header=None, index_col=None).iloc[1:].reset_index(drop=True).drop(drop_cols, axis=1)[start: end])
     
     df = pd.concat(df, ignore_index=True)
     df.columns = ['Z', 'Piezo']
@@ -37,6 +38,10 @@ def read_program(data_folder, validate_folders, program_no, drop_cols):
 def get_label(validate_file, program_no):
     validate_program = validate_file.get_group(program_no)['rawdata']
     return validate_program
+
+def export_to_csv(crop_idx):
+    export_df = pd.DataFrame(crop_idx, columns=['start', 'end'])
+    export_df.to_csv('croped_result.csv', index=False)
 
 
 # ===============================================================================================
@@ -50,13 +55,11 @@ data_folder = '/Users/hlinh96it/Library/CloudStorage/OneDrive-NTHU/ASE_PHM_WireB
 validate_folders = os.listdir(data_folder)
 validate_folders = [folder for folder in validate_folders if folder[2:] in validate_programs]
 
-drop_cols = [0, 1, 2, 5]
-program_1 = read_program(data_folder, validate_folders, program_no=0, drop_cols=drop_cols)
-label_program_1 = label_df_group
-
 
 ## Validate method and compare with provided labels ==================================
 for program_id, program_folder in enumerate(validate_folders):
+    if program_folder != '3、ENM0027FST':
+        continue
     
     try:
         os.makedirs(os.path.join('results', program_folder))
@@ -72,30 +75,32 @@ for program_id, program_folder in enumerate(validate_folders):
             
             
     ## Read data and Preprocessing data to better cropping ==================================
-    program_data = read_program(data_folder, validate_folders, program_id, drop_cols=[0, 1, 2, 5])
+    program_data = read_program(data_folder, validate_folders, program_id, drop_cols=[0, 1, 2, 5], 
+                                test=0, start=4481, end=320000)
     piezo = program_data['Piezo'].copy()
     
     
     ## Cropping for each connection ===========================================================
     crop_idx_pair = crop_connection(piezo)
+    export_to_csv(crop_idx_pair)
     
     
     ## Crop for looping parts =====================================================================
-    cropped_index, cropped_location = {}, {}
-    group_count = 1
-    previous_state = None
+    # cropped_index, cropped_location = {}, {}
+    # group_count = 1
+    # previous_state = None
     
-    for idx, pair in enumerate(tqdm(crop_idx_pair)):
-        if pair[0] - pair[1] > 0:
-            break
+    # for idx, pair in enumerate(tqdm(crop_idx_pair)):
+    #     if pair[0] - pair[1] > 0:
+    #         break
         
-        cropped_index, cropped_location, group_count = \
-            crop_looping_part(program_data['Z'][pair[0]: pair[1]], program_data['Piezo'][pair[0]: pair[1]], 
-                                cropped_index, cropped_location, group_count, previous_state,
-                                result_folder, current_idx=idx)
+    #     cropped_index, cropped_location, group_count = \
+    #         crop_looping_part(program_data['Z'][pair[0]: pair[1]], program_data['Piezo'][pair[0]: pair[1]], 
+    #                             cropped_index, cropped_location, group_count, previous_state,
+    #                             result_folder, current_idx=idx)
             
-    export_cols = ['1st_bond_start', '1st_bond_end', 'looping_start', 'looping_end', 'cv2_start', 'cv2_end',
-                '2nd_bond_start', '2nd_bond_end', 'reset_motion_start', 'reset_motion_end']
-    export_data = pd.DataFrame.from_dict(cropped_index, orient='index', columns=export_cols)
-    export_data.to_csv(result_folder + '/cropping_result.csv')
+    # export_cols = ['1st_bond_start', '1st_bond_end', 'looping_start', 'looping_end', 'cv2_start', 'cv2_end',
+    #             '2nd_bond_start', '2nd_bond_end', 'reset_motion_start', 'reset_motion_end']
+    # export_data = pd.DataFrame.from_dict(cropped_index, orient='index', columns=export_cols)
+    # export_data.to_csv(result_folder + '/cropping_result.csv')
 
