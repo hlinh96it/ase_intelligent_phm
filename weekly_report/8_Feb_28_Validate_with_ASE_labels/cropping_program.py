@@ -78,7 +78,12 @@ def crop_connection(piezo):
 
     crop_idx_pair = np.array(crop_idx_pair, dtype=int)
     
-    return crop_idx_pair
+    drop_pair = []
+    for pair in crop_idx_pair:
+        if pair[1] - pair[0] < 3000:
+            drop_pair.append(pair)
+    
+    return np.array(drop_pair)
 
 def crop_looping_part(array, piezo, cropped_index, cropped_location, group_count, previous_state,
                       result_folder, current_idx, require_visualize=False):

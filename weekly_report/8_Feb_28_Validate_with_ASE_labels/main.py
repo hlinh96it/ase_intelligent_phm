@@ -19,9 +19,11 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
-def read_program(data_folder, validate_folders, program_no, drop_cols, test=False, start=False, end=False):
+def read_program(label_df_group, data_folder, validate_folders, program_no, drop_cols, test=False):
     program = os.listdir(os.path.join(data_folder, validate_folders[program_no], 'One_Die'))
     all_program = [csv_file for csv_file in program if csv_file.endswith('.csv')]
+    cropp_index_col = label_df_group.get_group(validate_folders[program_no][2:])['rawdata']
+    start, end = cropp_index_col.min().astype(int), cropp_index_col.max().astype(int)
 
     df = []
     if test is not False: all_program = [all_program[test]]
@@ -33,21 +35,28 @@ def read_program(data_folder, validate_folders, program_no, drop_cols, test=Fals
     df.columns = ['Z', 'Piezo']
     df = df.astype(float)
     
-    return df
+    return df, label_df_group.get_group(validate_folders[program_no][2:]), start
 
 def get_label(validate_file, program_no):
     validate_program = validate_file.get_group(program_no)['rawdata']
     return validate_program
 
-def export_to_csv(crop_idx):
-    export_df = pd.DataFrame(crop_idx, columns=['start', 'end'])
-    export_df.to_csv('croped_result.csv', index=False)
+def export_to_csv(group, program_name, crop_idx):
+    start_label = group[group['status'] == 'Start']
+    end_label = group[group['status'] == 'End']
+    
+    export_csv = start_label[['program', 'rawdata']].reset_index(drop=True)
+    export_csv['end_label'] = end_label['rawdata'].values
+    
+    export_csv = pd.concat([export_csv, pd.DataFrame(crop_idx, columns=['start', 'end'])], axis=1)
+    
+    return export_csv
 
 
 # ===============================================================================================
 
 label_df = pd.read_excel('點位定義.xlsm', sheet_name='原始資料vs平滑資料')
-label_df = label_df[label_df['rawdata'].isna() == False]
+label_df = label_df[(label_df['rawdata'].isna() == False) & (label_df['window_length']==101)]
 label_df_group = label_df.groupby('program')  
 validate_programs = [program for program, group in label_df_group]
 
@@ -55,11 +64,10 @@ data_folder = '/Users/hlinh96it/Library/CloudStorage/OneDrive-NTHU/ASE_PHM_WireB
 validate_folders = os.listdir(data_folder)
 validate_folders = [folder for folder in validate_folders if folder[2:] in validate_programs]
 
-
 ## Validate method and compare with provided labels ==================================
-for program_id, program_folder in enumerate(validate_folders):
-    if program_folder != '3、ENM0027FST':
-        continue
+export_excel = None
+for program_id, program_folder in tqdm(enumerate(validate_folders)):
+    print(f'Processing for program {program_folder}..........')
     
     try:
         os.makedirs(os.path.join('results', program_folder))
@@ -75,14 +83,21 @@ for program_id, program_folder in enumerate(validate_folders):
             
             
     ## Read data and Preprocessing data to better cropping ==================================
-    program_data = read_program(data_folder, validate_folders, program_id, drop_cols=[0, 1, 2, 5], 
-                                test=0, start=4481, end=320000)
+    program_data, group, start = read_program(label_df_group, data_folder, validate_folders, program_id, 
+                                        drop_cols=[0, 1, 2, 5], test=0)
     piezo = program_data['Piezo'].copy()
     
     
     ## Cropping for each connection ===========================================================
     crop_idx_pair = crop_connection(piezo)
-    export_to_csv(crop_idx_pair)
+    
+    if export_excel is None:
+        export_excel = export_to_csv(group, program_folder[2:], crop_idx_pair[:-1, :]+start)
+    else:
+        export_excel = pd.concat([export_excel, export_to_csv(group, program_folder[2:], crop_idx_pair[:-1, :]+start)],
+                                 axis=0)
+        
+    export_excel.fillna(method='ffill').to_excel('all_program_cropped.xlsx', index=False)
     
     
     ## Crop for looping parts =====================================================================
